@@ -1,0 +1,21 @@
+{
+  "name": "stock-manager",
+  "version": "1.0.0",
+  "description": "Office furnishings stock management system",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

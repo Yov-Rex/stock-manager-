@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Local data: SQLite db + WAL/SHM, TLS certs, backups
+data/
+
+# Environment
+.env
+*.env.local
+
+# Logs (server stdout, cloudflared tunnel log, etc.)
+*.log
+*.tmp
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Stray Windows artifact: `command > nul` redirected to cwd by mistake
+nul
+
+# Editors
+.vscode/
+.idea/
+*.swp
