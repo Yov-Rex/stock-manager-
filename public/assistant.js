@@ -1,7 +1,8 @@
 /* ============================================================
  * Stockie — AI assistant floating widget.
- * Loaded AFTER addon.js. Independent IIFE so addon failures
- * don't take this down.
+ * Loaded AFTER addon.js. Strings come from the addon's i18n
+ * table via window.__smI18n.t() so language switching works
+ * without a refresh.
  * ============================================================ */
 (function () {
   'use strict';
@@ -9,6 +10,31 @@
   window.__stockieLoaded = true;
 
   const $ = (s, r = document) => r.querySelector(s);
+
+  // Wait briefly for the addon's IIFE to expose __smI18n. If addon.js
+  // fails to load, we fall back to a tiny English-only table so the
+  // widget still works.
+  const fallbackI18n = {
+    en: {
+      stockie_title: 'Stockie', stockie_fab_title: 'Open Stockie (AI assistant)',
+      stockie_placeholder: 'Ask Stockie anything…', stockie_send: 'Send',
+      stockie_clear: 'Clear chat', stockie_thinking: 'Stockie is thinking…',
+      stockie_status_checking: 'checking…', stockie_status_unavailable: 'unavailable',
+      stockie_status_not_configured: 'not configured', stockie_status_sign_in: 'sign in to use',
+      stockie_status_error: 'error',
+      stockie_not_configured_long: 'Stockie is not configured on this server.',
+      stockie_greeting: "Hi! I'm Stockie, your Stockroom assistant.",
+      stockie_cancelled: '✕ Cancelled', stockie_applying: '⏳ Applying…',
+      stockie_confirm: 'Confirm', stockie_cancel: 'Cancel',
+      stockie_error_prefix: 'Error: ',
+    },
+  };
+  function t(k, ...args) {
+    const i18n = window.__smI18n;
+    if (i18n) return i18n.t(k, ...args);
+    const v = (fallbackI18n.en && fallbackI18n.en[k]) || k;
+    return typeof v === 'function' ? v(...args) : v;
+  }
 
   // ---- Styles (kept inline so no separate CSS file to wire up) ----
   const CSS = `
@@ -33,6 +59,7 @@
     box-shadow: 0 18px 50px rgba(0,0,0,.5);
     display: none; flex-direction: column; overflow: hidden;
     font: inherit;
+    direction: inherit;
   }
   .stockie-panel.open { display: flex; }
   .stockie-head {
@@ -136,16 +163,15 @@
   document.head.appendChild(styleEl);
 
   // ---- State ----
-  const history = [];   // [{role, content}]
+  const history = [];
   let panelOpen = false;
   let enabled = false;
-  let pending = false;  // a request is in flight
-  const proposals = new Map(); // proposal_id -> {tool, args, dom}
+  let pending = false;
 
   // ---- Build the DOM once ----
   const fab = document.createElement('button');
   fab.className = 'stockie-fab';
-  fab.title = 'Open Stockie (AI assistant)';
+  fab.title = t('stockie_fab_title');
   fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
   fab.addEventListener('click', () => toggle());
 
@@ -154,14 +180,14 @@
   panel.innerHTML = `
     <div class="stockie-head">
       <span class="dot off" id="stockie-dot"></span>
-      <h4>Stockie</h4>
-      <span class="status" id="stockie-status">checking…</span>
-      <button id="stockie-clear" title="Clear chat" style="margin-left:8px;padding:2px 8px;border-radius:6px;background:transparent;border:1px solid var(--line,#2c3146);color:var(--text-1,#aaa);cursor:pointer;font-size:11px">Clear</button>
+      <h4 id="stockie-title">${escapeHtml(t('stockie_title'))}</h4>
+      <span class="status" id="stockie-status">${escapeHtml(t('stockie_status_checking'))}</span>
+      <button id="stockie-clear" title="${escapeHtml(t('stockie_clear'))}" style="margin-left:8px;padding:2px 8px;border-radius:6px;background:transparent;border:1px solid var(--line,#2c3146);color:var(--text-1,#aaa);cursor:pointer;font-size:11px">${escapeHtml(t('stockie_clear'))}</button>
     </div>
     <div class="stockie-msgs" id="stockie-msgs"></div>
     <form class="stockie-input">
-      <textarea id="stockie-text" placeholder="Ask Stockie anything…" rows="1"></textarea>
-      <button type="submit" id="stockie-send">Send</button>
+      <textarea id="stockie-text" placeholder="${escapeHtml(t('stockie_placeholder'))}" rows="1"></textarea>
+      <button type="submit" id="stockie-send">${escapeHtml(t('stockie_send'))}</button>
     </form>
   `;
   document.body.appendChild(panel);
@@ -172,6 +198,8 @@
   const sendBtn = $('#stockie-send');
   const statusEl = $('#stockie-status');
   const dotEl = $('#stockie-dot');
+  const titleEl = $('#stockie-title');
+  const clearBtn = $('#stockie-clear');
 
   function toggle() {
     panelOpen = !panelOpen;
@@ -179,27 +207,68 @@
     if (panelOpen) setTimeout(() => textEl.focus(), 50);
   }
 
+  // ---- Re-apply translations on language change ----
+  function applyLocal() {
+    fab.title = t('stockie_fab_title');
+    titleEl.textContent = t('stockie_title');
+    clearBtn.textContent = t('stockie_clear');
+    clearBtn.title = t('stockie_clear');
+    textEl.placeholder = t('stockie_placeholder');
+    sendBtn.textContent = t('stockie_send');
+    // Mirror addon's document direction
+    const dir = (window.__smI18n && window.__smI18n.getLang() === 'ar') ? 'rtl' : 'ltr';
+    panel.style.direction = dir;
+  }
+  // Listen for storage events (the addon persists sm_lang to localStorage)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'sm_lang') { applyLocal(); setStatus(currentStatusKey, currentStatusOn); }
+  });
+  // Poll the addon's lang getter every 2s (cheap) so manual changes via
+  // the language switcher are picked up even without storage events.
+  let lastLang = null;
+  setInterval(() => {
+    const cur = window.__smI18n ? window.__smI18n.getLang() : 'en';
+    if (cur !== lastLang) { lastLang = cur; applyLocal(); setStatus(currentStatusKey, currentStatusOn); }
+  }, 2000);
+  setTimeout(() => { lastLang = window.__smI18n ? window.__smI18n.getLang() : 'en'; }, 200);
+
   // ---- Status probe ----
+  let currentStatusKey = 'stockie_status_checking';
+  let currentStatusOn = false;
+  function setStatus(key, on) {
+    currentStatusKey = key;
+    currentStatusOn = on;
+    const txt = t(key) || t('stockie_status_error');
+    if (typeof txt === 'function') {
+      // stockie_status_ready takes a tool count; without one we just show "ready"
+      statusEl.textContent = t('stockie_status_ready', 0).replace(' · 0 ', ' · ');
+    } else {
+      statusEl.textContent = txt;
+    }
+    dotEl.classList.toggle('off', !on);
+  }
   async function probeStatus() {
     try {
       const tk = localStorage.getItem('sm_jwt');
-      if (!tk) { setStatus('sign in to use', false); return; }
+      if (!tk) { setStatus('stockie_status_sign_in', false); return; }
       const r = await fetch('/api/assistant/status', { headers: { Authorization: 'Bearer ' + tk } });
-      if (!r.ok) { setStatus('unavailable', false); return; }
+      if (!r.ok) { setStatus('stockie_status_unavailable', false); return; }
       const j = await r.json();
       enabled = !!j.enabled;
-      setStatus(enabled ? 'ready · ' + j.tools + ' tools' : 'not configured', enabled);
-    } catch (e) { setStatus('error', false); }
-  }
-  function setStatus(text, on) {
-    statusEl.textContent = text;
-    dotEl.classList.toggle('off', !on);
+      if (enabled) {
+        statusEl.textContent = t('stockie_status_ready', j.tools);
+        dotEl.classList.remove('off');
+        currentStatusOn = true;
+      } else {
+        setStatus('stockie_status_not_configured', false);
+      }
+    } catch (e) { setStatus('stockie_status_error', false); }
   }
 
   // ---- Chat send ----
   async function send(text) {
     if (!text || pending) return;
-    if (!enabled) { appendMsg('bot', 'Stockie is not configured on this server. Ask your admin to set OMNIROUTE_BASE_URL, OMNIROUTE_MODEL, OMNIROUTE_API_KEY in the server .env.', 'err'); return; }
+    if (!enabled) { appendMsg('bot', t('stockie_not_configured_long'), 'err'); return; }
 
     history.push({ role: 'user', content: text });
     appendMsg('user', text);
@@ -216,17 +285,15 @@
       typing.remove();
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: 'HTTP ' + r.status }));
-        appendMsg('bot', 'Error: ' + (err.error || r.statusText), 'err');
+        appendMsg('bot', t('stockie_error_prefix') + (err.error || r.statusText), 'err');
         return;
       }
       const out = await r.json();
-      // Strip the tool artifacts from history before pushing the assistant reply —
-      // the server already saw them and the model doesn't need them re-fed.
       history.push({ role: 'assistant', content: out.reply || '(no reply)' });
       renderAssistant(out);
     } catch (e) {
       typing.remove();
-      appendMsg('bot', 'Network error: ' + e.message, 'err');
+      appendMsg('bot', t('stockie_network_error', e.message), 'err');
     } finally {
       pending = false; sendBtn.disabled = false; textEl.focus();
     }
@@ -243,13 +310,12 @@
   function appendSpinner() {
     const div = document.createElement('div');
     div.className = 'stockie-msg bot';
-    div.innerHTML = '<span class="stockie-spinner"></span> Stockie is thinking…';
+    div.innerHTML = '<span class="stockie-spinner"></span> ' + escapeHtml(t('stockie_thinking'));
     msgsEl.appendChild(div);
     msgsEl.scrollTop = msgsEl.scrollHeight;
     return div;
   }
 
-  // Tiny markdown: **bold**, `code`, \n -> <br>
   function renderMarkdown(s) {
     return String(s ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -259,39 +325,37 @@
   }
 
   function renderAssistant(out) {
-    // Main reply
     if (out.reply) appendMsg('bot', out.reply);
 
-    // Reads (collapsed)
     if (out.reads && out.reads.length) {
       const det = document.createElement('details');
       det.className = 'stockie-reads';
       det.style.cssText = 'align-self:flex-start;max-width:90%;padding:6px 10px;background:var(--bg-2,#232744);border:1px solid var(--line,#2c3146);border-radius:10px;font-size:11px;color:var(--text-1,#aaa);';
-      det.innerHTML = '<summary>🔍 ' + out.reads.length + ' read' + (out.reads.length === 1 ? '' : 's') + '</summary>' +
+      det.innerHTML = '<summary>' + escapeHtml(t('stockie_reads_summary', out.reads.length)) + '</summary>' +
         out.reads.map(r => '<div style="margin-top:4px"><code>' + escapeHtml(r.tool) + '</code> ' + escapeHtml(JSON.stringify(r.args || {})) + '</div>').join('');
       msgsEl.appendChild(det);
       msgsEl.scrollTop = msgsEl.scrollHeight;
     }
 
-    // Pending writes — render each as a confirm/cancel card
     if (out.pending_writes && out.pending_writes.length) {
       for (const p of out.pending_writes) {
         const card = document.createElement('div');
         card.className = 'stockie-proposal';
         card.style.alignSelf = 'flex-start';
         card.style.maxWidth = '90%';
+        const lbl = t('stockie_propose') + ' ' + p.label;
         card.innerHTML = `
-          <div class="label">📝 ${escapeHtml(p.label)}</div>
+          <div class="label">${escapeHtml(lbl)}</div>
           <div class="args">${escapeHtml(JSON.stringify(p.args, null, 0))}</div>
           <div class="actions">
-            <button class="primary" data-action="confirm">Confirm</button>
-            <button data-action="cancel">Cancel</button>
+            <button class="primary" data-action="confirm">${escapeHtml(t('stockie_confirm'))}</button>
+            <button data-action="cancel">${escapeHtml(t('stockie_cancel'))}</button>
           </div>
         `;
         const btns = card.querySelectorAll('button');
         btns[0].addEventListener('click', () => executeProposal(p, card));
         btns[1].addEventListener('click', () => {
-          card.querySelector('.label').textContent = '✕ Cancelled';
+          card.querySelector('.label').textContent = t('stockie_cancelled');
           btns.forEach(b => b.disabled = true);
           history.push({ role: 'user', content: '[Cancelled proposal: ' + p.label + ']' });
         });
@@ -304,7 +368,7 @@
   async function executeProposal(p, card) {
     const btns = card.querySelectorAll('button');
     btns.forEach(b => b.disabled = true);
-    card.querySelector('.label').textContent = '⏳ Applying…';
+    card.querySelector('.label').textContent = t('stockie_applying');
     try {
       const tk = localStorage.getItem('sm_jwt');
       const r = await fetch('/api/assistant/execute', {
@@ -314,14 +378,13 @@
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
-      card.querySelector('.label').textContent = '✅ Done — ' + p.label;
-      // Pretty-print the result
+      card.querySelector('.label').textContent = t('stockie_done', p.label);
       const argsEl = card.querySelector('.args');
       if (argsEl) argsEl.innerHTML = '<pre>' + escapeHtml(JSON.stringify(j, null, 2)) + '</pre>';
       history.push({ role: 'user', content: '[Confirmed: ' + p.label + ' — result: ' + JSON.stringify(j) + ']' });
     } catch (e) {
-      card.querySelector('.label').textContent = '❌ Failed: ' + e.message;
-      btns[0].disabled = false;  // allow retry
+      card.querySelector('.label').textContent = t('stockie_failed', e.message);
+      btns[0].disabled = false;
       btns[1].disabled = false;
       history.push({ role: 'user', content: '[Proposal failed: ' + e.message + ']' });
     }
@@ -349,26 +412,27 @@
       send(v);
     }
   });
-  $('#stockie-clear').addEventListener('click', () => {
+  clearBtn.addEventListener('click', () => {
     history.length = 0;
     msgsEl.innerHTML = '';
-    appendMsg('bot', "Hi! I'm Stockie, your Stockroom assistant. Ask me about stock levels, who took what, or tell me what to add or remove. Writes always need your confirmation.");
+    appendMsg('bot', t('stockie_greeting'));
   });
 
   // ---- Lifecycle ----
-  // Show only when signed in. Probe status whenever the JWT changes.
   function syncVisibility() {
     const hasToken = !!localStorage.getItem('sm_jwt');
     fab.style.display = hasToken ? '' : 'none';
     if (hasToken) probeStatus();
   }
-  // Watch localStorage for token changes (login/logout from another tab/window)
   window.addEventListener('storage', (e) => {
     if (e.key === 'sm_jwt') syncVisibility();
   });
-  // Poll every 30s while visible — cheap, just one HTTP call
   setInterval(syncVisibility, 30000);
-  // First check
   setTimeout(syncVisibility, 300);
   setTimeout(syncVisibility, 1500);
+
+  // Initial greeting (or no-op if not yet signed in)
+  if (localStorage.getItem('sm_jwt')) {
+    appendMsg('bot', t('stockie_greeting'));
+  }
 })();
