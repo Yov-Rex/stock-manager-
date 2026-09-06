@@ -57,9 +57,22 @@
     return `<svg class="${cls}" aria-hidden="true"><use href="#icon-${id}" xlink:href="#icon-${id}"></use></svg>`;
   };
   const mkIconBtn = (id, label, onClick, cls = 'btn btn-ghost', size = 18) => {
+    // For icon-only buttons (`.icon-btn`) the CSS sets a fixed 32×32 box
+    // meant to hold only the icon glyph. Rendering the label text in
+    // addition squashes the icon and leaks the word "Remove" into the
+    // table cell. Skip the label span in that case; the button's title
+    // attribute (set below) still conveys the action to screen readers
+    // and tooltips.
+    const iconOnly = cls.split(/\s+/).includes('icon-btn');
     const btn = document.createElement('button');
     btn.className = cls;
-    btn.innerHTML = iconHTML(id, size) + '<span data-i18n="' + label + '"></span>';
+    if (iconOnly) {
+      btn.title = label;
+      btn.innerHTML = iconHTML(id, size);
+    } else {
+      btn.title = label;
+      btn.innerHTML = iconHTML(id, size) + '<span data-i18n="' + label + '"></span>';
+    }
     btn.addEventListener('click', onClick);
     return btn;
   };
@@ -484,7 +497,9 @@
     nav.appendChild(mkNavLink('alerts', 'alert', 'alerts'));
     nav.appendChild(mkNavLink('requesters', 'users', 'requesters'));
     nav.appendChild(mkNavLink('departments', 'shield', 'departments'));
-    nav.appendChild(mkNavLink('scan', 'search', 'scan'));
+    // No sidebar entry for the Scan page — the topbar Scan button opens
+    // the same lookup via the floating mini-modal from any page, so the
+    // full-page #scan route is redundant in the nav.
     nav.appendChild(mkNavLink('inventory', 'box', 'inventory'));
     nav.appendChild(mkNavLink('admin', 'edit', 'admin'));
   }
@@ -737,10 +752,10 @@ PEN-001,Ballpoint pen,Stationery,pcs,100,20,Drawer A,Acme"></textarea>
       } catch (err) { toast(err.message, 'bad'); }
     };
     body.innerHTML = `
-      <div class="field"><label data-i18n="name"></label><input name="name" required></div>
+      <div class="field"><label data-i18n="name"></label><input type="text" name="name" required></div>
       <div class="row-2">
-        <div class="field"><label data-i18n="email"></label><input name="email" type="email"></div>
-        <div class="field"><label data-i18n="phone"></label><input name="phone"></div>
+        <div class="field"><label data-i18n="email"></label><input type="email" name="email"></div>
+        <div class="field"><label data-i18n="phone"></label><input type="text" name="phone"></div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="rq-cancel" data-i18n="cancel"></button>
@@ -835,7 +850,7 @@ PEN-001,Ballpoint pen,Stationery,pcs,100,20,Drawer A,Acme"></textarea>
       } catch (err) { toast(err.message, 'bad'); }
     };
     body.innerHTML = `
-      <div class="field"><label data-i18n="name"></label><input name="name" required value="${editing ? escapeHtml(dept.name) : ''}"></div>
+      <div class="field"><label data-i18n="name"></label><input type="text" name="name" required value="${editing ? escapeHtml(dept.name) : ''}"></div>
       <div class="field"><label data-i18n="description"></label><textarea name="description" rows="2">${editing ? escapeHtml(dept.description || '') : ''}</textarea></div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="dp-cancel" data-i18n="cancel"></button>
@@ -1390,12 +1405,12 @@ PEN-001,Ballpoint pen,Stationery,pcs,100,20,Drawer A,Acme"></textarea>
         <div class="field"><label data-i18n="quantity"></label>
           <input name="quantity" type="number" min="1" step="1" required autofocus></div>
         <div class="field"><label data-i18n="reason"></label>
-          <input name="reason" placeholder="${type === 'in' ? 'purchase, transfer…' : 'request, breakage…'}"></div>
+          <input type="text" name="reason" placeholder="${type === 'in' ? 'purchase, transfer…' : 'request, breakage…'}"></div>
       </div>
       ${type === 'in' ? `
         <div class="row-3">
-          <div class="field"><label data-i18n="supplier"></label><input name="supplier"></div>
-          <div class="field"><label data-i18n="delivery_note"></label><input name="delivery_note"></div>
+          <div class="field"><label data-i18n="supplier"></label><input type="text" name="supplier"></div>
+          <div class="field"><label data-i18n="delivery_note"></label><input type="text" name="delivery_note"></div>
           <div class="field"><label data-i18n="entry_type"></label>
             <select name="entry_type">
               <option value="">—</option>
@@ -1549,6 +1564,24 @@ PEN-001,Ballpoint pen,Stationery,pcs,100,20,Drawer A,Acme"></textarea>
     document.body.dataset.v1Tagged = '1';
   }
 
+  // ---- Watch the v1 view-root for any re-render (filter change, hash
+  // change, modal close, etc.) and re-apply translations immediately.
+  // Without this, switching language sometimes misses the most recent
+  // v1 render and you have to refresh to see the new strings.
+  function watchViewRoot() {
+    const root = $('#view-root');
+    if (!root || root.dataset.addonLangWatch) return;
+    root.dataset.addonLangWatch = '1';
+    // Throttle: many mutations in a tick → one applyLang.
+    let scheduled = false;
+    const mo = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; applyLang(); });
+    });
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+  }
+
   // ---- After the v1 app has rendered the shell, install our extras ----
   function hookShell() {
     const shell = $('#app-shell');
@@ -1559,6 +1592,7 @@ PEN-001,Ballpoint pen,Stationery,pcs,100,20,Drawer A,Acme"></textarea>
     injectNav();
     injectTopbar();
     fixSearchInput();
+    watchViewRoot();
     applyLang();
     // Pick up the current user from the v1 "who" block
     const whoName = ($('#who-name') || {}).textContent;

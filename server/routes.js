@@ -2,6 +2,7 @@
 // one place — small surface, easy to read, easy to test.
 const express = require('express');
 const db = require('./db');
+const assistant = require('./assistant');
 const {
   sign, setAuthCookie, clearAuthCookie,
   requireAuth, requireAdmin, hashPassword, authenticate,
@@ -692,6 +693,41 @@ router.post('/restore.sqlite', restoreLimiter, requireAuth, requireAdmin, (req, 
     try { fs.unlinkSync(tmpPath); } catch {}
     res.status(500).json({ error: err.message });
   }
+});
+
+
+// ---- AI assistant (Stockie) ----------------------------------------
+// Authenticated chat that proxies to the configured LLM (OMNIROUTE_*).
+// Reads run server-side; writes return as proposals the client must
+// POST back to /assistant/execute with a matching proposal_id.
+router.post('/assistant/chat', requireAuth, async (req, res) => {
+  if (!assistant.enabled()) {
+    return res.status(503).json({ error: 'assistant not configured (set OMNIROUTE_BASE_URL, OMNIROUTE_MODEL, OMNIROUTE_API_KEY in .env)' });
+  }
+  const messages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+  if (messages.length === 0) return res.status(400).json({ error: 'messages required' });
+  // Cap conversation length so a runaway client can't blow up context.
+  const trimmed = messages.slice(-24);
+  try {
+    const out = await assistant.chat({ messages: trimmed, user: req.user });
+    res.json(out);
+  } catch (e) {
+    console.error('[assistant] chat failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/assistant/execute', requireAuth, (req, res) => {
+  if (!assistant.enabled()) {
+    return res.status(503).json({ error: 'assistant not configured' });
+  }
+  assistant.executeProposal(req, res);
+});
+
+// Lightweight probe so the client can show "Stockie is ready / not
+// configured" in the widget header without making a chat call.
+router.get('/assistant/status', requireAuth, (_req, res) => {
+  res.json({ enabled: assistant.enabled(), tools: assistant.TOOLS.length });
 });
 
 module.exports = router;

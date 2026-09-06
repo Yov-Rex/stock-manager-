@@ -261,23 +261,29 @@
     return h('div', { class: 'kpi ' + cls },
       h('div', { class: 'row' },
         h('span', { class: 'muted', style:{display:'inline-flex',alignItems:'center',gap:'8px'} },
-          h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse(icon)), label)
+          iconUse(icon, 'i-18'), label)
       ),
       h('div', { class: 'value' }, String(value)),
       sub ? h('div', { class: 'sub' }, sub) : null
     );
   }
-  function iconUse(id) {
-    // Build the <use> element via the DOMParser instead of createElementNS.
-    // Some browsers (older Samsung Browser, JSDOM) don't resolve `href`
-    // on namespaced <use> elements created with createElementNS, even when
-    // both `href` and `xlink:href` are set. Parsing a tiny inline SVG
-    // string makes the browser's own HTML parser handle the namespace,
-    // which is reliable everywhere.
+  function iconUse(id, cls) {
+    // Build a <svg><use/></svg> via DOMParser and return the wrapper.
+    // The wrapper matters: an <use> only resolves its `href` to a
+    // <symbol> when it lives inside an <svg> in the document tree.
+    // Earlier versions returned just the <use> element (doc.firstChild),
+    // which produced a bare <use> child of <button> with no SVG context —
+    // browsers wouldn't paint the icon, and the rendered HTML showed
+    // <use> sitting directly under the button. We emit BOTH `href` and
+    // `xlink:href` for cross-browser resolution reliability.
     const ns = 'http://www.w3.org/2000/svg';
-    const src = '<svg xmlns="' + ns + '"><use href="#icon-' + id + '"></use></svg>';
+    const xlink = 'http://www.w3.org/1999/xlink';
+    const c = cls || 'i-18';
+    const src = '<svg xmlns="' + ns + '" xmlns:xlink="' + xlink + '" class="' + c + '">' +
+                '<use href="#icon-' + id + '" xlink:href="#icon-' + id + '"></use>' +
+                '</svg>';
     const doc = new DOMParser().parseFromString(src, 'image/svg+xml');
-    return doc.documentElement.firstChild; // the <use> element
+    return doc.documentElement;
   }
 
   function miniSparkCard(label, value, kind) {
@@ -335,7 +341,7 @@
       h('div', { class: 'grow' }),
       state.user.role === 'admin'
         ? h('button', { class: 'btn btn-primary', onclick: () => openItemEditor(null) },
-            h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('plus')),
+            iconUse('plus', 'i-18'),
             'New item')
         : null
     );
@@ -347,7 +353,7 @@
       ),
       items.length === 0
         ? h('div', { class: 'empty' },
-            h('svg', { class: 'illus', 'aria-hidden': 'true' }, iconUse('box')),
+            iconUse('box', 'illus'),
             h('div', {}, 'No items match your filters.'))
         : h('div', { style:{overflowX:'auto'} }, renderItemsTable(items))
     );
@@ -384,12 +390,12 @@
           h('td', { class: 'muted', style:{whiteSpace:'nowrap'} }, fmtMoney(valueOf(it))),
           h('td', { style:{whiteSpace:'nowrap'} },
             h('button', { class: 'icon-btn', title: 'Quick stock-out', onclick: () => openQuickStockOut(it) },
-              h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('package-out'))),
+              iconUse('package-out', 'i-18')),
             h('button', { class: 'icon-btn', title: 'View detail', style: { marginLeft: '4px' }, onclick: () => openItemDetail(it.id) },
-              h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('search'))),
+              iconUse('search', 'i-18')),
             state.user.role === 'admin'
               ? h('button', { class: 'icon-btn', title: 'Edit', style: { marginLeft: '4px' }, onclick: () => openItemEditor(it) },
-                  h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('edit')))
+                  iconUse('edit', 'i-18'))
               : null
           )
         );
@@ -430,7 +436,7 @@
       ),
       h('div', { class: 'row', style:{gap:'8px', margin:'14px 0 0'} },
         state.user.role === 'admin' ? h('button', { class: 'btn btn-ghost', onclick: () => { modal.close(); openItemEditor(item); } },
-          h('svg', { class: 'i-18', 'aria-hidden':'true' }, iconUse('edit')),
+          iconUse('edit', 'i-18'),
           'Edit') : null
       )
     );
@@ -448,7 +454,7 @@
     const panels = { details: detailsPanel, in: stockInPanel, out: stockOutPanel, movements: movementsPanel };
     const mkTab = (key, label, iconId) => {
       const btn = h('button', { class: 'tab', 'data-tab': key },
-        h('svg', { class: 'i-18', 'aria-hidden':'true' }, iconUse(iconId)),
+        iconUse(iconId, 'i-18'),
         h('span', {}, label)
       );
       btn.addEventListener('click', () => setTab(key));
@@ -488,7 +494,7 @@
                               openItemDetail(it.id);
                             });
                           } },
-              h('svg', { class: 'i-18', 'aria-hidden':'true' }, iconUse('search')),
+              iconUse('search', 'i-18'),
               'Scan')
           )
         ),
@@ -607,7 +613,7 @@
         h('div', { style:{marginLeft:'auto'} },
           h('button', { type:'button', class:'btn btn-ghost btn-sm',
                         onclick: () => { modal.close(); openScanMini((it) => openQuickStockOut(it)); } },
-            h('svg', { class: 'i-18', 'aria-hidden':'true' }, iconUse('search')),
+            iconUse('search', 'i-18'),
             'Scan')
         )
       ),
@@ -702,7 +708,7 @@
         h('div', { class: 'field' },
           h('label', {}, 'SKU *'),
           h('div', { style:{display:'flex', gap:'6px'} },
-            h('input', { name: 'sku', required: true, value: item?.sku || '',
+            h('input', { name: 'sku', type: 'text', required: true, value: item?.sku || '',
                           disabled: editing,
                           style:{flex:'1', fontFamily:'ui-monospace,monospace'} }),
             editing ? null :
@@ -715,7 +721,7 @@
                               }, () => openItemEditor(null));
                             },
                             title: 'Scan a code to autofill' },
-                h('svg', { class: 'i-18', 'aria-hidden':'true' }, iconUse('search')),
+                iconUse('search', 'i-18'),
                 'Scan')
           )
         ),
@@ -723,7 +729,7 @@
       ),
       h('div', { class: 'field' },
         h('label', {}, 'Name *'),
-        h('input', { name: 'name', required: true, value: item?.name || '' })
+        h('input', { name: 'name', type: 'text', required: true, value: item?.name || '' })
       ),
       h('div', { class: 'row-3' },
         fieldInput('Unit', 'unit', item?.unit || 'pcs'),
@@ -736,7 +742,7 @@
       ),
       editing ? h('div', { class: 'field' },
         h('label', {}, 'Location'),
-        h('input', { name: 'location', value: item?.location || '' })
+        h('input', { name: 'location', type: 'text', value: item?.location || '' })
       ) : null,
       h('div', { class: 'field' },
         h('label', {}, 'Notes'),
@@ -745,7 +751,7 @@
       h('div', { class: 'modal-actions' },
         editing && state.user.role === 'admin'
           ? h('button', { type: 'button', class: 'btn btn-bad', onclick: () => confirmDelete(item) },
-              h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('trash')),
+              iconUse('trash', 'i-18'),
               'Delete')
           : null,
         h('div', { class: 'spacer' }),
@@ -786,9 +792,14 @@
   }
 
   function fieldInput(label, name, value, attrs = {}) {
+    // Default `type` to "text" so the CSS selector `input[type="text"]`
+    // matches. Without an explicit type attribute, browsers render the
+    // input as text but the attribute selector misses it, leaving the
+    // field with default browser styling (white background, no padding,
+    // no border-radius) instead of the dark theme.
     return h('div', { class: 'field' },
       h('label', {}, label),
-      h('input', Object.assign({ name, value: value ?? '' }, attrs))
+      h('input', Object.assign({ name, type: 'text', value: value ?? '' }, attrs))
     );
   }
 
@@ -804,7 +815,7 @@
       ),
       movements.length === 0
         ? h('div', { class: 'empty' },
-            h('svg', { class: 'illus', 'aria-hidden': 'true' }, iconUse('history')),
+            iconUse('history', 'illus'),
             'No movements yet. Add some stock or hand items out from the Items page.')
         : renderMovementsTable(movements, false)
     );
@@ -878,10 +889,10 @@
               h('td', { class: 'muted' }, fmtDate(u.created_at)),
               h('td', { style:{whiteSpace:'nowrap'} },
                 h('button', { class: 'icon-btn', title: 'Edit', onclick: () => openUserEditor(u) },
-                  h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('edit'))),
+                  iconUse('edit', 'i-18')),
                 u.id !== state.user.id
                   ? h('button', { class: 'icon-btn', title: 'Remove', style:{marginLeft:'4px'}, onclick: () => removeUser(u) },
-                      h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('trash')))
+                      iconUse('trash', 'i-18'))
                   : h('span', { class: 'muted', style:{fontSize:'12px',marginLeft:'8px'} }, 'you')
               )
             )))
@@ -891,7 +902,7 @@
     const toolbar = h('div', { class: 'toolbar' },
       h('div', { class: 'grow' }),
       h('button', { class: 'btn btn-primary', onclick: () => openUserEditor(null) },
-        h('svg', { class: 'i-18', 'aria-hidden': 'true' }, iconUse('plus')),
+        iconUse('plus', 'i-18'),
         'New person')
     );
 

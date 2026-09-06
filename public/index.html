@@ -127,14 +127,14 @@
             <p>Office furnishings manager</p>
           </div>
         </div>
-        <form id="login-form" autocomplete="on">
+        <form id="login-form" autocomplete="off">
           <label>
             <span>Username</span>
-            <input type="text" name="username" autocomplete="username" required value="admin">
+            <input type="text" name="username" autocomplete="username" required>
           </label>
           <label>
             <span>Password</span>
-            <input type="password" name="password" autocomplete="current-password" required value="admin123">
+            <input type="password" name="password" autocomplete="current-password" required>
           </label>
           <button type="submit" class="btn btn-primary">
             <svg class="i-18" aria-hidden="true"><use href="#icon-arrow-down"/></svg>
@@ -225,5 +225,6 @@
   <script src="/app.js" defer></script>
   <script src="/xlsx.full.min.js" defer></script>
   <script src="/addon.js" defer></script>
+  <script src="/assistant.js" defer></script>
 </body>
 </html>

@@ -49,10 +49,15 @@ async function main() {
   console.log('[test] initial render shows login screen');
   ok(!document.getElementById('login-screen').hidden, 'login screen visible');
   ok(document.getElementById('app-shell').hidden, 'app shell hidden');
-  ok(document.querySelector('#login-form input[name=username]').value === 'admin', 'username prefilled with admin');
-  ok(document.querySelector('#login-form input[name=password]').value === 'admin123', 'password prefilled');
+  ok(document.querySelector('#login-form input[name=username]').value === '', 'username field starts empty');
+  ok(document.querySelector('#login-form input[name=password]').value === '', 'password field starts empty');
 
   console.log('[test] submit login form');
+  // Type credentials into the now-empty login fields (we deliberately
+  // removed the prefilled defaults so production users don't see
+  // "admin / admin123" sitting in the form).
+  document.querySelector('#login-form input[name=username]').value = 'admin';
+  document.querySelector('#login-form input[name=password]').value = 'admin123';
   // Override fetch so the SPA talks to our live server.
   dom.window.fetch = async (url, opts = {}) => {
     const u = url.startsWith('http') ? url : BASE + url;
